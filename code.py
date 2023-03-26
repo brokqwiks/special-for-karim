@@ -1,4 +1,5 @@
 import os
+import pathlib
 
 import aiogram
 from aiogram import Bot, Dispatcher, executor, types
@@ -21,9 +22,19 @@ class ClientStatesGroup(StatesGroup):
     dir = State()
     dir_rename_get = State()
     dir_rename_set = State()
+    file_new = State()
+    file_delete = State()
+    file_rename_set = State()
+    file_rename_get = State()
+    file_write = State()
+    file_move = State()
+    file_open = State()
+
 
 dir_name = None
 dir_new_name = None
+file_name = None
+file_new_name = None
 
 @dp.message_handler(commands=['start'])
 async def start_cmd(message: types.Message):
@@ -134,6 +145,135 @@ async def dir_rename_set(message: types.Message, state: FSMContext):
         await state.finish()
         dir_name = None
         dir_new_name = None
+
+@dp.message_handler(commands=['file_new'])
+async def cmd_file_new(message: types.Message, state: FSMContext):
+    dir_path = os.getcwd()
+    await bot.send_message(message.from_user.id, f'Напишите название файла\nФайл будет создан в: {dir_path}')
+    await ClientStatesGroup.file_new.set()
+
+@dp.message_handler(state=ClientStatesGroup.file_new)
+async def file_new(message: types.Message, state: FSMContext):
+    file_name = message.text
+    path = pathlib.Path(file_name)
+    path_file = os.getcwd()
+    if path.is_file() == False:
+        file = open(file_name, 'w')
+        file.close()
+        await state.finish()
+        await bot.send_message(message.from_user.id, f'Файл {file_name} был создан\nПуть: {path_file}')
+    else:
+        await state.finish()
+        await bot.send_message(message.from_user.id, f'Файл с названием {file_name} уже существует!')
+
+
+@dp.message_handler(commands=['file_delete'])
+async def cmd_file_delete(message: types.Message, state: FSMContext):
+    path_file = os.getcwd()
+    await bot.send_message(message.from_user.id, f'Выберите название файла, который находится в {path_file}')
+    await ClientStatesGroup.file_delete.set()
+
+@dp.message_handler(state=ClientStatesGroup.file_delete)
+async def file_delete(message: types.Message, state: FSMContext):
+    file_name = message.text
+    path = pathlib.Path(file_name)
+    if path.is_file() == True:
+        os.remove(file_name)
+        await state.finish()
+        await bot.send_message(message.from_user.id, f'Файл {file_name} был удален')
+    else:
+        await state.finish()
+        await bot.send_message(message.from_user.id, f'Файл {file_name} не существует!')
+
+
+@dp.message_handler(commands=['file_set'])
+async def cmd_file_rename(message: types.Message, state: FSMContext):
+    path_file = os.getcwd()
+    await bot.send_message(message.from_user.id, f'Выберите название файла, который находится в {path_file}')
+    await ClientStatesGroup.file_rename_set.set()
+
+@dp.message_handler(state=ClientStatesGroup.file_rename_set)
+async def file_rename_set(message: types.Message, state: FSMContext):
+    global file_name
+    file_name = message.text
+    path = pathlib.Path(file_name)
+    if path.is_file() == True:
+        await state.finish()
+        await bot.send_message(message.from_user.id, f'Выбран файл {file_name}')
+    else:
+        await state.finish()
+        await bot.send_message(message.from_user.id, f'Файл с названием {file_name} не существует!')
+
+@dp.message_handler(commands=['file_rename'])
+async def cmd_file_rename(message: types.Message, state: FSMContext):
+    await bot.send_message(message.from_user.id, f'Выберите новое название для файла {file_name}')
+    await ClientStatesGroup.file_rename_get.set()
+
+@dp.message_handler(state=ClientStatesGroup.file_rename_get)
+async def file_rename_get(message: types.Message, state: FSMContext):
+    global file_name, file_new_name
+    file_new_name = message.text
+    os.rename(file_name, file_new_name)
+    await state.finish()
+    await bot.send_message(message.from_user.id, f'Старое название файла: {file_name}\nНовое название файла: {file_new_name}')
+    file_name = None
+    file_new_name = None
+
+@dp.message_handler(commands=['file_read'])
+async def cmd_file_read(message: types.Message):
+    global file_name
+    file = open(file_name, 'r', encoding='UTF-8')
+    file_read = file.read()
+    await bot.send_message(message.from_user.id, f'Содержимое файла:\n{file_read}')
+    file.close()
+    file_name = None
+
+@dp.message_handler(commands=['file_write'])
+async def cmd_file_write(message: types.Message, state: FSMContext):
+    await bot.send_message(message.from_user.id, 'Введите текст')
+    await ClientStatesGroup.file_write.set()
+
+@dp.message_handler(state=ClientStatesGroup.file_write)
+async def file_write(message: types.Message, state: FSMContext):
+    global file_name
+    write_text = message.text
+    write_file = open(file_name, 'r+', encoding='UTF-8')
+    write_file.write(write_text)
+    write_file.close()
+    file = open(file_name, 'r+', encoding='UTF-8')
+    file_read = file.read()
+    await state.finish()
+    await bot.send_message(message.from_user.id, f'Содержание файла {file_name} было изменено:\n{file_read}')
+    file_name = None
+
+@dp.message_handler(commands=['file_move'])
+async def cmd_file_move(message: types.Message, state: FSMContext):
+    await bot.send_message(message.from_user.id, 'Выберите путь куда переместить файл')
+    await ClientStatesGroup.file_move.set()
+
+@dp.message_handler(state=ClientStatesGroup.file_move)
+async def file_move(message: types.Message, state: FSMContext):
+    global file_name
+    new_path_file = message.text
+    os.replace(file_name, new_path_file)
+    await state.finish()
+    await bot.send_message(message.from_user.id, f'Файл {file_name} был перемещен в:\n{new_path_file} ')
+    file_name = None
+
+@dp.message_handler(commands=['file_open'])
+async def cmd_file_opem(message: types.Message, state: FSMContext):
+    await bot.send_message(message.from_user.id, 'Выберите какой файл открыть')
+    await ClientStatesGroup.file_open.set()
+
+
+@dp.message_handler(state=ClientStatesGroup.file_open)
+async def file_open(message: types.Message, state: FSMContext):
+    file_path = message.text
+    os.startfile(file_path)
+    await state.finish()
+    await bot.send_message(message.from_user.id, f'Файл {file_path} открыт')
+
+
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
