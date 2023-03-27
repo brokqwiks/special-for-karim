@@ -1,12 +1,15 @@
 import os
 import pathlib
+import webbrowser
+import  shutil
 
-import aiogram
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.dispatcher.filters import Text
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.dispatcher import FSMContext
+
+import config
 
 bot_token = "6172822773:AAGbFKhMEQMPo5GyU3cH8xAVrYdHU_MYiqk"
 
@@ -22,6 +25,7 @@ class ClientStatesGroup(StatesGroup):
     dir = State()
     dir_rename_get = State()
     dir_rename_set = State()
+    dir_move = State()
     file_new = State()
     file_delete = State()
     file_rename_set = State()
@@ -29,16 +33,19 @@ class ClientStatesGroup(StatesGroup):
     file_write = State()
     file_move = State()
     file_open = State()
-
+    link_open_get = State()
+    link_open_set = State()
 
 dir_name = None
 dir_new_name = None
 file_name = None
 file_new_name = None
+link = None
 
 @dp.message_handler(commands=['start'])
 async def start_cmd(message: types.Message):
-    await bot.send_message(message.from_user.id, "Привет! Я могу управлять твоим компьютером ")
+    await bot.send_message(message.from_user.id, "Привет! Я могу управлять твоим компьютером ",
+                           reply_markup=config.kb)
 
 
 @dp.message_handler(commands=['get_cd'])
@@ -72,10 +79,13 @@ async def go_cd(message: types.Message, state: FSMContext):
 @dp.message_handler(state=ClientStatesGroup.go_cd)
 async def go_direct(message: types.Message, state: FSMContext):
     name_direct = message.text
-    os.chdir(name_direct)
-    direct_path = os.getcwd()
-    await bot.send_message(message.from_user.id, f'Вы переместились в {direct_path}')
-    await state.finish()
+    if os.path.isdir(name_direct):
+        os.chdir(name_direct)
+        direct_path = os.getcwd()
+        await bot.send_message(message.from_user.id, f'Вы переместились в {direct_path}')
+        await state.finish()
+    else:
+        await bot.send_message(message.from_user.id, f'Директория {name_direct} не существует! ')
 
 @dp.message_handler(commands=['dir_delete'])
 async def cmd_delete_direct(message: types.Message, state: FSMContext):
@@ -126,8 +136,12 @@ async def dir_rename_get(message: types.Message, state: FSMContext):
 
 @dp.message_handler(commands=['dir_rename'])
 async def cmd_dir_rename(message: types.Message, state: FSMContext):
-    await bot.send_message(message.from_user.id, f'Выберите новое название для директории {dir_name}')
-    await ClientStatesGroup.dir_rename_set.set()
+    global dir_name
+    if dir_name != None:
+        await bot.send_message(message.from_user.id, f'Выберите новое название для директории {dir_name}')
+        await ClientStatesGroup.dir_rename_set.set()
+    else:
+        await bot.send_message(message.from_user.id, 'Сначала выберите нужную директорию командой /dir_set')
 
 @dp.message_handler(state=ClientStatesGroup.dir_rename_set)
 async def dir_rename_set(message: types.Message, state: FSMContext):
@@ -145,6 +159,25 @@ async def dir_rename_set(message: types.Message, state: FSMContext):
         await state.finish()
         dir_name = None
         dir_new_name = None
+
+@dp.message_handler(commands=['dir_move'])
+async def cmd_dir_move(message: types.Message, state: FSMContext):
+    global dir_name
+    if dir_name != None:
+        await bot.send_message(message.from_user.id, f'Выберите куда вы хотите переместить директорию {dir_name}')
+        await ClientStatesGroup.dir_move.set()
+    else:
+        await bot.send_message(message.from_user.id, 'Сначала выберите нужную директорию командой /dir_set')
+        
+@dp.message_handler(state=ClientStatesGroup.dir_move)
+async def dir_move(message: types.Message, state: FSMContext):
+    global dir_name
+    path_move = message.text
+    shutil.move(dir_name, path_move)
+    await bot.send_message(message.from_user.id, f'Директория {dir_name} была перемещена в:\n{path_move}')
+    dir_name = None
+    await state.finish()
+
 
 @dp.message_handler(commands=['file_new'])
 async def cmd_file_new(message: types.Message, state: FSMContext):
@@ -206,33 +239,45 @@ async def file_rename_set(message: types.Message, state: FSMContext):
 
 @dp.message_handler(commands=['file_rename'])
 async def cmd_file_rename(message: types.Message, state: FSMContext):
-    await bot.send_message(message.from_user.id, f'Выберите новое название для файла {file_name}')
-    await ClientStatesGroup.file_rename_get.set()
-
+    global file_name
+    if file_name != None:
+        await bot.send_message(message.from_user.id, f'Выберите новое название для файла {file_name}')
+        await ClientStatesGroup.file_rename_get.set()
+    else:
+        await bot.send_message(message.from_user.id, 'Сначала выберите нужный файл командой /file_set')
+        
 @dp.message_handler(state=ClientStatesGroup.file_rename_get)
 async def file_rename_get(message: types.Message, state: FSMContext):
     global file_name, file_new_name
-    file_new_name = message.text
-    os.rename(file_name, file_new_name)
-    await state.finish()
-    await bot.send_message(message.from_user.id, f'Старое название файла: {file_name}\nНовое название файла: {file_new_name}')
-    file_name = None
-    file_new_name = None
+    if file_name != None:
+        file_new_name = message.text
+        os.rename(file_name, file_new_name)
+        await state.finish()
+        await bot.send_message(message.from_user.id, f'Старое название файла: {file_name}\nНовое название файла: {file_new_name}')
+        file_name = None
+        file_new_name = None
 
 @dp.message_handler(commands=['file_read'])
 async def cmd_file_read(message: types.Message):
     global file_name
-    file = open(file_name, 'r', encoding='UTF-8')
-    file_read = file.read()
-    await bot.send_message(message.from_user.id, f'Содержимое файла:\n{file_read}')
-    file.close()
-    file_name = None
+    if file_name != None:
+        file = open(file_name, 'r', encoding='UTF-8')
+        file_read = file.read()
+        await bot.send_message(message.from_user.id, f'Содержимое файла:\n{file_read}')
+        file.close()
+        file_name = None
+    else:
+        await bot.send_message(message.from_user.id, 'Сначала выберите нужный файл командой /file_set')
 
 @dp.message_handler(commands=['file_write'])
 async def cmd_file_write(message: types.Message, state: FSMContext):
-    await bot.send_message(message.from_user.id, 'Введите текст')
-    await ClientStatesGroup.file_write.set()
-
+    global file_name
+    if file_name != None:
+        await bot.send_message(message.from_user.id, 'Введите текст')
+        await ClientStatesGroup.file_write.set()
+    else:
+        await bot.send_message(message.from_user.id, 'Сначала выберите нужный файл командой /file_set')
+        
 @dp.message_handler(state=ClientStatesGroup.file_write)
 async def file_write(message: types.Message, state: FSMContext):
     global file_name
@@ -248,8 +293,12 @@ async def file_write(message: types.Message, state: FSMContext):
 
 @dp.message_handler(commands=['file_move'])
 async def cmd_file_move(message: types.Message, state: FSMContext):
-    await bot.send_message(message.from_user.id, 'Выберите путь куда переместить файл')
-    await ClientStatesGroup.file_move.set()
+    global file_name
+    if file_name != None:
+        await bot.send_message(message.from_user.id, f'Выберите путь куда переместить файл {file_name}')
+        await ClientStatesGroup.file_move.set()
+    else:
+        await bot.send_message(message.from_user.id, 'Сначала выберите нужный файл командой /file_set')
 
 @dp.message_handler(state=ClientStatesGroup.file_move)
 async def file_move(message: types.Message, state: FSMContext):
@@ -272,6 +321,47 @@ async def file_open(message: types.Message, state: FSMContext):
     os.startfile(file_path)
     await state.finish()
     await bot.send_message(message.from_user.id, f'Файл {file_path} открыт')
+
+@dp.message_handler(commands=['link_open'])
+async def cmd_link_open(message: types.Message, state: FSMContext):
+    await bot.send_message(message.from_user.id, 'Отправьте ссылку, которую хотите открыть')
+    await ClientStatesGroup.link_open_get.set()
+
+@dp.message_handler(state=ClientStatesGroup.link_open_get)
+async def link_open_get(message: types.Message, state: FSMContext):
+    link = message.text
+    await bot.send_message(message.from_user.id, 'Напишите число как открыть ссылку:\n0.Ссылка откроется в том же окне браузера\n1.Откроется новое окно браузера\n2.Откроется новая вкладка браузера')
+    await state.finish()
+    await ClientStatesGroup.link_open_set.set()
+
+@dp.message_handler(state=ClientStatesGroup.link_open_set)
+async def link_open_set(message: types.Message, state: FSMContext):
+    global link
+    method = message.text
+    if method == '0':
+        webbrowser.open(link, new=0)
+        await state.finish()
+        await bot.send_message(message.from_user.id, f'Ссылка {link} открыто 0 методом')
+        link = None
+    elif method == '1':
+        webbrowser.open(link, new=1)
+        await state.finish()
+        await bot.send_message(message.from_user.id, f'Ссылка {link} открыто 1 методом')
+        link = None
+    elif method == '2':
+        webbrowser.open(link, new=2)
+        await state.finish()
+        await bot.send_message(message.from_user.id, f'Ссылка {link} открыто 2 методом')
+        link = None
+    else:
+        await bot.send_message(message.from_user.id, 'Вы выбрали неверный метод открытия ссылки')
+        await state.finish()
+        link = None
+
+@dp.message_handler(Text(equals='Команды'))
+async def cmd_help(message: types.Message):
+    await bot.send_message(message.from_user.id, config.cmd_help)
+
 
 
 
