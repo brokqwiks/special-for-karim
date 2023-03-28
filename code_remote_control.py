@@ -35,12 +35,15 @@ class ClientStatesGroup(StatesGroup):
     file_open = State()
     link_open_get = State()
     link_open_set = State()
+    photo_new_set_name = State()
+    photo_new_set_photo = State()
 
 dir_name = None
 dir_new_name = None
 file_name = None
 file_new_name = None
 link = None
+photo_name = None
 
 @dp.message_handler(commands=['start'])
 async def start_cmd(message: types.Message):
@@ -362,6 +365,24 @@ async def link_open_set(message: types.Message, state: FSMContext):
 async def cmd_help(message: types.Message):
     await bot.send_message(message.from_user.id, config.cmd_help)
 
+
+@dp.message_handler(commands=['photo_new'])
+async def cmd_photo_new(message: types.Message, state: FSMContext):
+    await bot.send_message(message.from_user.id, 'Выберите название для фотографии')
+    await ClientStatesGroup.photo_new_set_name.set()
+
+@dp.message_handler(state=ClientStatesGroup.photo_new_set_name)
+async def photo_new_set_name(message: types.Message, state: FSMContext):
+    global photo_name
+    photo_name = message.text
+    await bot.send_message(message.from_user.id, 'Название фотографии записано.\nТеперь отправьте фотографию')
+    await state.finish()
+    await ClientStatesGroup.photo_new_set_photo.set()
+
+@dp.message_handler(state=ClientStatesGroup.photo_new_set_photo)
+async def photo_new_set_photo(message: types.Message):
+    global photo_name
+    await message.photo[-1].download(photo_name)
 
 
 
