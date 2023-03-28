@@ -366,25 +366,5 @@ async def cmd_help(message: types.Message):
     await bot.send_message(message.from_user.id, config.cmd_help)
 
 
-@dp.message_handler(commands=['photo_new'])
-async def cmd_photo_new(message: types.Message, state: FSMContext):
-    await bot.send_message(message.from_user.id, 'Выберите название для фотографии')
-    await ClientStatesGroup.photo_new_set_name.set()
-
-@dp.message_handler(state=ClientStatesGroup.photo_new_set_name)
-async def photo_new_set_name(message: types.Message, state: FSMContext):
-    global photo_name
-    photo_name = message.text
-    await bot.send_message(message.from_user.id, 'Название фотографии записано.\nТеперь отправьте фотографию')
-    await state.finish()
-    await ClientStatesGroup.photo_new_set_photo.set()
-
-@dp.message_handler(state=ClientStatesGroup.photo_new_set_photo)
-async def photo_new_set_photo(message: types.Message):
-    global photo_name
-    await message.photo[-1].download(photo_name)
-
-
-
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
